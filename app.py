@@ -19,12 +19,20 @@ from cryptography.fernet import Fernet
 from werkzeug.security import check_password_hash, generate_password_hash
 
 BASE_DIR = Path(__file__).resolve().parent
-app = Flask(__name__, instance_path=str(BASE_DIR / "instance"))
+# Vercel par sirf /tmp me likh sakte hain, is liye wahan DB /tmp me banegi
+if os.getenv("VERCEL"):
+    INSTANCE_PATH = "/tmp/instance"
+    DB_PATH = "/tmp/crm.sqlite3"
+else:
+    INSTANCE_PATH = str(BASE_DIR / "instance")
+    DB_PATH = str(Path(INSTANCE_PATH) / 'crm.sqlite3')
+
+app = Flask(__name__, instance_path=INSTANCE_PATH)
 Path(app.instance_path).mkdir(parents=True, exist_ok=True)
 production = os.getenv("APP_ENV") == "production"
 app.config.update(
     SECRET_KEY=os.getenv("SECRET_KEY", "dev-only-change-me"),
-    SQLALCHEMY_DATABASE_URI=os.getenv("DATABASE_URL", f"sqlite:///{Path(app.instance_path) / 'crm.sqlite3'}").replace(
+    SQLALCHEMY_DATABASE_URI=os.getenv("DATABASE_URL", f"sqlite:///{DB_PATH}").replace(
         "postgres://", "postgresql+psycopg://", 1
     ).replace("postgresql://", "postgresql+psycopg://", 1),
     SQLALCHEMY_TRACK_MODIFICATIONS=False,
@@ -44,14 +52,12 @@ login_manager.login_view = "login"
 login_manager.login_message = "Please sign in to access your workspace."
 login_manager.login_message_category = "info"
 
-
 class Workspace(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     created_at = db.Column(db.DateTime, server_default=func.now(), nullable=False)
     users = db.relationship("User", backref="workspace", cascade="all, delete-orphan")
     contacts = db.relationship("Contact", backref="workspace", cascade="all, delete-orphan")
-
 
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -66,7 +72,6 @@ class User(UserMixin, db.Model):
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
 
-
 class Contact(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     workspace_id = db.Column(db.Integer, db.ForeignKey("workspace.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -76,7 +81,6 @@ class Contact(db.Model):
     stage = db.Column(db.String(30), nullable=False, default="New")
     notes = db.Column(db.Text, nullable=False, default="")
     created_at = db.Column(db.DateTime, server_default=func.now(), nullable=False)
-
 
 class WhatsAppConnection(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -88,7 +92,6 @@ class WhatsAppConnection(db.Model):
     created_at = db.Column(db.DateTime, server_default=func.now(), nullable=False)
     workspace = db.relationship("Workspace", backref=db.backref("whatsapp_connection", uselist=False, cascade="all, delete-orphan"))
 
-
 class WhatsAppMessage(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     workspace_id = db.Column(db.Integer, db.ForeignKey("workspace.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -99,15 +102,12 @@ class WhatsAppMessage(db.Model):
     body = db.Column(db.Text, nullable=False, default="")
     received_at = db.Column(db.DateTime, nullable=False)
 
-
 STAGES = ("New", "Contacted", "Qualified", "Proposal", "Won", "Lost")
 SOURCES = ("Instagram", "Facebook", "Website", "Referral", "Other")
-
 
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
-
 
 @app.after_request
 def security_headers(response):
@@ -117,16 +117,13 @@ def security_headers(response):
     response.headers.setdefault("Cache-Control", "no-store")
     return response
 
-
 def workspace_contacts():
     # Every contact query is scoped to the signed-in user's workspace.
     return Contact.query.filter_by(workspace_id=current_user.workspace_id)
 
-
 def token_cipher():
     key_material = hashlib.sha256((app.config["SECRET_KEY"] + "|orbit-whatsapp-token-v1").encode()).digest()
     return Fernet(base64.urlsafe_b64encode(key_material))
-
 
 def graph_request(path, *, token=None, params=None, data=None, http_method=None):
     version = os.getenv("META_GRAPH_VERSION", "v27.0")
@@ -157,7 +154,6 @@ def graph_request(path, *, token=None, params=None, data=None, http_method=None)
         raise RuntimeError(str(payload["error"].get("message", "Meta rejected the request."))[:220])
     return payload
 
-
 def validate_contact_form():
     name = request.form.get("name", "").strip()
     phone = request.form.get("phone", "").strip()
@@ -178,13 +174,11 @@ def validate_contact_form():
         return None
     return {"name": name, "phone": phone, "source": source, "stage": stage, "notes": notes}
 
-
 @app.get("/")
 def home():
     if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
     return redirect(url_for("register"))
-
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -216,7 +210,6 @@ def register():
             return redirect(url_for("dashboard"))
     return render_template("register.html")
 
-
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
@@ -231,14 +224,12 @@ def login():
         flash("Email or password is incorrect.", "error")
     return render_template("login.html")
 
-
 @app.post("/logout")
 @login_required
 def logout():
     logout_user()
     flash("You have signed out.", "success")
     return redirect(url_for("login"))
-
 
 @app.get("/dashboard")
 @login_required
@@ -252,7 +243,6 @@ def dashboard():
     counts = {stage: workspace_contacts().filter_by(stage=stage).count() for stage in STAGES}
     return render_template("dashboard.html", contacts=contacts, counts=counts, stages=STAGES, sources=SOURCES, search=search)
 
-
 @app.get("/settings")
 @login_required
 def settings():
@@ -261,7 +251,6 @@ def settings():
     return render_template("settings.html", connection=connection, meta_ready=meta_ready,
                            meta_app_id=os.getenv("META_APP_ID", ""), meta_config_id=os.getenv("META_CONFIG_ID", ""),
                            graph_version=os.getenv("META_GRAPH_VERSION", "v27.0"))
-
 
 @app.post("/whatsapp/connect")
 @login_required
@@ -306,7 +295,6 @@ def whatsapp_connect():
         db.session.rollback()
         return {"error": str(exc)}, 502
 
-
 @app.post("/whatsapp/disconnect")
 @login_required
 def whatsapp_disconnect():
@@ -323,7 +311,6 @@ def whatsapp_disconnect():
     flash("WhatsApp was disconnected from this CRM workspace.", "success")
     return redirect(url_for("settings"))
 
-
 @app.get("/webhooks/whatsapp")
 def whatsapp_webhook_verify():
     verify_token = os.getenv("META_WEBHOOK_VERIFY_TOKEN", "")
@@ -331,7 +318,6 @@ def whatsapp_webhook_verify():
             and hmac.compare_digest(request.args.get("hub.verify_token", ""), verify_token)):
         return request.args.get("hub.challenge", ""), 200, {"Content-Type": "text/plain"}
     abort(403)
-
 
 @app.post("/webhooks/whatsapp")
 @csrf.exempt
@@ -370,14 +356,12 @@ def whatsapp_webhook_receive():
     db.session.commit()
     return {"ok": True}
 
-
 @app.get("/inbox")
 @login_required
 def inbox():
     messages = WhatsAppMessage.query.filter_by(workspace_id=current_user.workspace_id).order_by(WhatsAppMessage.received_at.desc()).limit(100).all()
     connection = WhatsAppConnection.query.filter_by(workspace_id=current_user.workspace_id).first()
     return render_template("inbox.html", messages=messages, connection=connection)
-
 
 @app.post("/contacts")
 @login_required
@@ -388,7 +372,6 @@ def create_contact():
         db.session.commit()
         flash("Contact saved.", "success")
     return redirect(url_for("dashboard"))
-
 
 @app.post("/contacts/<int:contact_id>/edit")
 @login_required
@@ -402,7 +385,6 @@ def edit_contact(contact_id):
         flash("Contact updated.", "success")
     return redirect(url_for("dashboard"))
 
-
 @app.post("/contacts/<int:contact_id>/delete")
 @login_required
 def delete_contact(contact_id):
@@ -412,10 +394,8 @@ def delete_contact(contact_id):
     flash("Contact deleted.", "success")
     return redirect(url_for("dashboard"))
 
-
 with app.app_context():
     db.create_all()
-
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=int(os.getenv("PORT", "8000")), debug=not production)
