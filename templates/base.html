@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#176b4b">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>{% block title %}AS CRM{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='whatsapp.css') }}">
+</head>
+<body>
+  <header class="topbar"><a class="brand" href="{{ url_for('dashboard') if current_user.is_authenticated else url_for('register') }}"><span class="brand-icon">AS</span> AS <span class="brand-label">CRM</span></a>
+    {% if current_user.is_authenticated %}<div class="top-user"><a href="{{ url_for('inbox') }}">Inbox</a><a href="{{ url_for('settings') }}">WhatsApp</a><span>{{ current_user.workspace.name }}</span><form method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="link-button" type="submit">Sign out</button></form></div>{% endif %}
+  </header>
+  <main class="page">
+    {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}<div class="alerts">{% for category, message in messages %}<div class="alert {{ category }}">{{ message }}</div>{% endfor %}</div>{% endif %}{% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="footer">AS CRM · Early access · Your workspace data is private to your account</footer>
+</body>
+</html>
