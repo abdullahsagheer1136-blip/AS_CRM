@@ -1,4 +1,4 @@
-# Orbit CRM
+# AS CRM
 
 An early multi-workspace CRM web app for a social media marketing business. It includes signup/login, workspace-scoped contacts, lead tracking, a Meta WhatsApp Embedded Signup v4 connect screen, encrypted WhatsApp access-token storage, a signed inbound webhook, and a basic inbox for received messages.
 
@@ -42,7 +42,7 @@ Render free web services sleep after 15 minutes without traffic, and free databa
 2. Configure Facebook Login for Business and create a WhatsApp Embedded Signup v4 configuration. Add your deployed HTTPS hostname to the allowed domains and valid OAuth redirect URI settings.
 3. Set the environment variables above and redeploy.
 4. In the Meta app's Webhooks product, configure object **WhatsApp Business Account**, callback URL `https://YOUR-DOMAIN/webhooks/whatsapp`, and the same verify token as `META_WEBHOOK_VERIFY_TOKEN`. Subscribe to `messages` and `account_update`.
-5. Log in to Orbit, open **WhatsApp**, enter the WhatsApp Business number's six-digit two-step verification PIN, and click **Continue with Facebook**.
+5. Log in to AS, open **WhatsApp**, enter the WhatsApp Business number's six-digit two-step verification PIN, and click **Continue with Facebook**.
 6. Test with your own Meta app roles first. After Meta approval, eligible external businesses can use the flow. Confirm inbound messages reach **Inbox**.
 
 The `/webhooks/whatsapp` POST handler validates Meta's `X-Hub-Signature-256` signature before storing messages. Each connected WABA and incoming message is linked to a workspace. Access tokens are encrypted in the database using a key derived from `SECRET_KEY`; keep that secret stable and protected. Rotating it will prevent decrypting previously saved WhatsApp tokens.
